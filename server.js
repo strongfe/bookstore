@@ -7,12 +7,23 @@ const cors = require("cors");
 const authRoutes = require("./routes/auth");
 const { authMiddleware } = require("./middleware/auth");
 const adminRoutes = require('./routes/admin');
+const bookRoutes = require('./routes/bookRoutes');
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
+
+// 업로드 디렉토리 생성
+const fs = require('fs');
+const uploadDirs = ['uploads/pdfs', 'uploads/covers'];
+uploadDirs.forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
 
 // MongoDB 연결
 mongoose.connect("mongodb://localhost:27017/bookmarketplace")
@@ -32,6 +43,7 @@ mongoose.connection.on("error", (err) => {
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use('/api/books', bookRoutes);
 
 // Basic route
 app.get("/", (req, res) => {
