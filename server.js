@@ -8,11 +8,17 @@ const authRoutes = require("./routes/auth");
 const authMiddleware = require("./middleware/auth");
 const adminRoutes = require('./routes/admin');
 const bookRoutes = require('./routes/bookRoutes');
+const transactionRoutes = require('./routes/transactionRoutes');
 
 const app = express();
 
-// Middleware
+// Middleware 순서 중요
 app.use(cors());
+
+// Stripe webhook 라우트를 위한 raw body parser
+app.use('/api/transactions/webhook', express.raw({ type: 'application/json' }));
+
+// 나머지 라우트를 위한 JSON parser
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
@@ -48,6 +54,7 @@ app.use((req, res, next) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use('/api/books', bookRoutes);
+app.use('/api/transactions', transactionRoutes);
 
 // Basic route
 app.get("/", (req, res) => {

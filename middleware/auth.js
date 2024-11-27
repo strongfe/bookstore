@@ -1,48 +1,40 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
-const authMiddleware = (req, res, next) => {
-    try {
-        console.log('환경변수 확인:', {
-            JWT_SECRET_EXISTS: !!process.env.JWT_SECRET,
-            JWT_SECRET_LENGTH: process.env.JWT_SECRET?.length,
-            JWT_SECRET_VALUE: process.env.JWT_SECRET
-        });
+const authMiddleware = async (req, res, next) => {
+  try {
+    // 토큰 확인
+    console.log('Authorization Header:', req.headers.authorization);
+    
+    const token = req.headers.authorization?.split(' ')[1];
+    console.log('Extracted Token:', token);
 
-        const authHeader = req.header('Authorization');
-        console.log('Authorization 헤더:', authHeader);
-        
-        const token = authHeader?.replace('Bearer ', '');
-        if (!token) {
-            return res.status(401).json({ message: '인증이 필요합니다' });
-        }
-        
-        const decodedWithoutVerification = jwt.decode(token);
-        console.log('검증 전 토큰 내용:', decodedWithoutVerification);
-        
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log('검증된 토큰:', decoded);
-
-        req.user = {
-            id: decoded.userId
-        };
-        next();
-    } catch (error) {
-        console.error('인증 미들웨어 오류:', {
-            name: error.name,
-            message: error.message,
-            tokenHeader: req.header('Authorization'),
-            envSecret: process.env.JWT_SECRET
-        });
-        
-        if (error.name === 'JsonWebTokenError') {
-            return res.status(401).json({ 
-                message: '유효하지 않은 토큰입니다',
-                details: process.env.NODE_ENV === 'development' ? error.message : undefined
-            });
-        }
-        
-        res.status(401).json({ message: '인증 실패' });
+    if (!token) {
+      console.log('토큰이 없음');
+      return res.status(401).json({ message: '인증 토큰이 필요합니다.' });
     }
+
+    // 토큰 검증
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('Decoded Token:', decoded);
+
+    // 사용자 정보 조회
+    const user = await User.findById(decoded.userId);
+    console.log('Found User:', user);
+
+    if (!user) {
+      console.log('사용자를 찾을 수 없음');
+      return res.status(404).json({ message: '사용자를 찾을 수 없습니다.' });
+    }
+
+    req.user = user;
+    console.log('Request User Set:', req.user);
+    
+    next();
+  } catch (error) {
+    console.error('Auth Middleware Error:', error);
+    res.status(401).json({ message: '인증에 실패했습니다.', error: error.message });
+  }
 };
 
 module.exports = authMiddleware; 
