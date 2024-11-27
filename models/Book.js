@@ -25,21 +25,20 @@ const bookSchema = new mongoose.Schema(
     category: {
       type: String,
       required: [true, "카테고리는 필수입니다"],
-      enum: ["소설", "시", "에세이", "자기계발", "경제/경영", 
-             "인문/사회", "과학/공학", "컴퓨터/IT", "외국어", "기타"],
+      enum: ["기술", "소설", "시", "에세이", "자기계발", "기타"],
     },
     coverImage: {
       type: String,
-      required: [true, "표지 이미지는 필수입니다"],
+      required: false,
     },
     pdf: {
       type: String,
-      required: [true, "PDF 파일은 필수입니다"],
+      required: false,
     },
     seller: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: [true, "판매자 정보는 필수입니다"],
     },
     isActive: {
       type: Boolean,

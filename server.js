@@ -5,7 +5,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const authRoutes = require("./routes/auth");
-const { authMiddleware } = require("./middleware/auth");
+const authMiddleware = require("./middleware/auth");
 const adminRoutes = require('./routes/admin');
 const bookRoutes = require('./routes/bookRoutes');
 
@@ -26,12 +26,11 @@ uploadDirs.forEach(dir => {
 });
 
 // MongoDB 연결
-mongoose.connect("mongodb://localhost:27017/bookmarketplace")
+mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log("MongoDB에 연결되었습니다");
   })
   .catch((err) => {
-    // 에러가 발생해도 서버는 계속 실행되도록 함
     console.log("MongoDB 연결 오류:", err.message);
   });
 
@@ -41,6 +40,11 @@ mongoose.connection.on("error", (err) => {
 });
 
 // Routes
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use('/api/books', bookRoutes);
@@ -50,8 +54,27 @@ app.get("/", (req, res) => {
   res.json({ message: "서버가 정상적으로 실행 중입니다" });
 });
 
+// 에러 핸들링 미들웨어 추가
+app.use((err, req, res, next) => {
+  console.error('서버 에러:', {
+    message: err.message,
+    stack: err.stack,
+    path: req.path,
+    method: req.method,
+    body: req.body
+  });
+
+  res.status(err.status || 500).json({
+    message: err.message || '서버 오류가 발생했습니다',
+    error: process.env.NODE_ENV === 'development' ? {
+      message: err.message,
+      stack: err.stack
+    } : undefined
+  });
+});
+
 // Start server
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`서버가 ${PORT} 포트에서 실행 중입니다`);
 });

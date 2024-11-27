@@ -56,22 +56,61 @@ exports.getBookById = async (req, res) => {
 };
 
 exports.createBook = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
+  console.log("Hello World - POST /api/books 요청이 들어왔습니다!");
+  console.log("요청 헤더:", req.headers);
+  console.log("요청 사용자:", req.user);
+  
   try {
-    const book = new Book({
+    // 1. 유효성 검사 결과 확인
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      console.log('유효성 검사 오류:', errors.array());
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    // 2. 요청 데이터 로깅
+    console.log('요청 본문:', req.body);
+    console.log('업로드된 파일:', req.files);
+
+    // 3. 기본 책 데이터 생성
+    const bookData = {
       ...req.body,
-      seller: req.user.id,
-      coverImage: req.files.coverImage[0].path,
-      pdf: req.files.pdf[0].path
-    });
+      seller: req.user.id
+    };
+
+    // 4. 파일이 있는 경우에만 파일 경로 추가
+    if (req.files) {
+      if (req.files.coverImage) {
+        bookData.coverImage = req.files.coverImage[0].path;
+      }
+      if (req.files.pdf) {
+        bookData.pdf = req.files.pdf[0].path;
+      }
+    }
+
+    // 5. 책 생성
+    const book = new Book(bookData);
+
+    // 6. 저장 시도
+    console.log('저장 시도할 책 데이터:', book);
     await book.save();
+    
     res.status(201).json(book);
   } catch (error) {
-    res.status(500).json({ message: '서버 오류가 발생했습니다' });
+    // 7. 자세한 에러 정보 로깅
+    console.error('책 생성 중 오류 발생:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    
+    res.status(500).json({ 
+      message: '서버 오류가 발생했습니다',
+      error: {
+        message: error.message,
+        type: error.name
+      }
+    });
   }
 };
 

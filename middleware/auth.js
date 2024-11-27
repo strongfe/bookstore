@@ -9,9 +9,12 @@ const authMiddleware = (req, res, next) => {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded;
+        req.user = {
+            id: decoded.userId
+        };
         next();
     } catch (error) {
+        console.error('인증 미들웨어 오류:', error);
         res.status(401).json({ message: '인증 실패' });
     }
 };
