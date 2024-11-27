@@ -1,49 +1,95 @@
 const mongoose = require("mongoose");
 
-const bookSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: [true, "책 제목은 필수입니다"],
-    trim: true
+const bookSchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      required: [true, "제목은 필수입니다"],
+      trim: true,
+    },
+    author: {
+      type: String,
+      required: [true, "저자는 필수입니다"],
+      trim: true,
+    },
+    description: {
+      type: String,
+      required: [true, "설명은 필수입니다"],
+      trim: true,
+    },
+    price: {
+      type: Number,
+      required: [true, "가격은 필수입니다"],
+      min: [0, "가격은 0보다 커야 합니다"],
+    },
+    category: {
+      type: String,
+      required: [true, "카테고리는 필수입니다"],
+      enum: ["기술", "소설", "시", "에세이", "자기계발", "기타"],
+    },
+    coverImage: {
+      type: String,
+      required: false,
+    },
+    pdf: {
+      type: String,
+      required: false,
+    },
+    seller: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "판매자 정보는 필수입니다"],
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    rating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+    reviews: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        rating: {
+          type: Number,
+          required: true,
+          min: 1,
+          max: 5,
+        },
+        comment: {
+          type: String,
+          required: true,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    purchaseCount: {
+      type: Number,
+      default: 0,
+    },
   },
-  author: {
-    type: String,
-    required: [true, "저자명은 필수입니다"],
-    trim: true
-  },
-  description: {
-    type: String,
-    required: [true, "책 설명은 필수입니다"]
-  },
-  price: {
-    type: Number,
-    required: [true, "가격은 필수입니다"],
-    min: [0, "가격은 0보다 커야 합니다"]
-  },
-  seller: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true
-  },
-  coverImage: {
-    type: String,
-    default: "default-book-cover.jpg"
-  },
-  category: {
-    type: String,
-    required: [true, "카테고리는 필수입니다"]
-  },
-  status: {
-    type: String,
-    enum: ["available", "sold"],
-    default: "available"
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
+  {
+    timestamps: true,
   }
-}, {
-  timestamps: true
+);
+
+// 검색을 위한 인덱스 생성
+bookSchema.index({ title: "text", author: "text", description: "text" });
+
+// 가상 필드: 평균 평점 계산
+bookSchema.virtual("averageRating").get(function() {
+  if (this.reviews.length === 0) return 0;
+  const sum = this.reviews.reduce((total, review) => total + review.rating, 0);
+  return (sum / this.reviews.length).toFixed(1);
 });
 
-module.exports = mongoose.model("Book", bookSchema); 
+module.exports = mongoose.model("Book", bookSchema);

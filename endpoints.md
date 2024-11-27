@@ -28,3 +28,5 @@ Endpoint: /api/auth/admin/users
 Delete a user (admin route)
 Method: DELETE
 Endpoint: /api/auth/admin/users/:id
+
+

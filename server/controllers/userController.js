@@ -1,176 +1,200 @@
-const User = require("../models/User");
-const Book = require("../models/Book");
-const Purchase = require("../models/Purchase");
-const Transaction = require("../models/Transaction");
+const User = require('../models/User');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
-const register = async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+exports.register = async (req, res) => {
+    try {
+        const { username, email, password } = req.body;
+        
+        // 비밀번호 유효성 검사
+        const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+        if (!passwordRegex.test(password)) {
+            return res.status(400).json({ 
+                success: false,
+                message: '비밀번호는 최소 8자 이상이며, 영문자, 숫자, 특수문자를 포함해야 합니다.' 
+            });
+        }
+        
+        // 이메일 중복 체크
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ 
+                success: false,
+                message: '이미 등록된 이메일입니다' 
+            });
+        }
+
+        // 비밀번호 해싱
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
+        // 새 사용자 생성
+        const user = new User({
+            username,
+            email,
+            password: hashedPassword
+        });
+
+        await user.save();
+        
+        res.status(201).json({ 
+            success: true,
+            message: '회원가입이 완료되었습니다' 
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false,
+            message: error.message 
+        });
     }
+};
 
-    const { username, email, password } = req.body;
+exports.login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        console.log('로그인 시도:', { email, passwordLength: password?.length });
 
-    // 이메일 중복 체크
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ message: "이미 등록된 이메일입니다" });
+        // 1. 입력값 검증
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: '이메일과 비밀번호를 모두 입력해주세요.'
+            });
+        }
+
+        // 2. 사용자 찾기
+        const user = await User.findOne({ email });
+        console.log('사용자 조회 결과:', user ? '사용자 찾음' : '사용자 없음');
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: '이메일 또는 비밀번호가 올바르지 않습니다.'
+            });
+        }
+
+        // 3. 비밀번호 확인
+        const isMatch = await bcrypt.compare(password, user.password);
+        console.log('비밀번호 검증 결과:', isMatch);
+
+        if (!isMatch) {
+            return res.status(401).json({
+                success: false,
+                message: '이메일 또는 비밀번호가 올바르지 않습니다.'
+            });
+        }
+
+        // 4. 사용자 권한 확인
+        const userRole = user.role || 'user';
+        const isAdmin = user.isAdmin === true || userRole === 'admin';
+
+        // 5. JWT 토큰 생성
+        const token = jwt.sign(
+            { 
+                userId: user._id,
+                email: user.email,
+                role: userRole,
+                isAdmin
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        // 6. 응답 데이터 구성
+        const responseData = {
+            success: true,
+            token,
+            user: {
+                id: user._id,
+                email: user.email,
+                username: user.username,
+                role: userRole,
+                isAdmin,
+                createdAt: user.createdAt
+            },
+            message: '로그인에 성공했습니다.'
+        };
+
+        console.log('로그인 성공:', { userId: user._id, email: user.email });
+        res.status(200).json(responseData);
+
+    } catch (error) {
+        console.error('로그인 처리 중 에러 발생:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
+        
+        res.status(500).json({ 
+            success: false,
+            message: '로그인 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
+};
 
-    // 사용자명 중복 체크
-    user = await User.findOne({ username });
-    if (user) {
-      return res.status(400).json({ message: "이미 사용 중인 사용자명입니다" });
+exports.updateProfile = async (req, res) => {
+    try {
+        const updates = req.body;
+        const user = await User.findByIdAndUpdate(
+            req.user.userId,
+            updates,
+            { new: true }
+        );
+        res.json(user);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
-
-    // 새 사용자 생성
-    user = new User({ username, email, password });
-    await user.save();
-
-    // 토큰 생성
-    const token = user.generateAuthToken();
-    res.status(201).json({ token });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "서버 오류가 발생했습니다" });
-  }
 };
 
-const login = async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+exports.changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const user = await User.findById(req.user.userId);
+        
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: '현재 비밀번호가 일치하지 않습니다' });
+        }
+
+        user.password = await bcrypt.hash(newPassword, 10);
+        await user.save();
+        
+        res.json({ message: '비밀번호가 변경되었습니다' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
+};
 
-    const { email, password } = req.body;
-
-    // 사용자 확인
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: "이메일 또는 비밀번호가 올바르지 않습니다" });
+exports.getUploadedBooks = async (req, res) => {
+    try {
+        const books = await Book.find({ seller: req.user.userId });
+        res.json(books);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
+};
 
-    // 비밀번호 확인
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "이메일 또는 비밀번호가 올바르지 않습니다" });
+exports.getPurchasedBooks = async (req, res) => {
+    try {
+        const books = await Book.find({ 
+            _id: { $in: req.user.purchasedBooks } 
+        });
+        res.json(books);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
-
-    // 토큰 생성
-    const token = user.generateAuthToken();
-    res.json({ token });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "서버 오류가 발생했습니다" });
-  }
 };
 
-const getProfile = async (req, res) => {
-  try {
-    res.json(req.user);
-  } catch (error) {
-    res.status(500).json({ message: "서버 오류가 발생했습니다" });
-  }
-};
-
-const updateProfile = async (req, res) => {
-  try {
-    const { fullName, bio, profilePicture } = req.body;
-    const updateData = {};
-    
-    if (fullName) updateData.fullName = fullName;
-    if (bio) updateData.bio = bio;
-    if (profilePicture) updateData.profilePicture = profilePicture;
-
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { $set: updateData },
-      { new: true }
-    ).select("-password");
-
-    res.json(user);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "서버 오류가 발생했습니다" });
-  }
-};
-
-const changePassword = async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.user.id);
-
-    const isMatch = await user.comparePassword(currentPassword);
-    if (!isMatch) {
-      return res.status(400).json({ message: "현재 비밀번호가 올바르지 않습니다" });
+exports.getTransactions = async (req, res) => {
+    try {
+        const transactions = await Transaction.find({
+            $or: [
+                { buyer: req.user.userId },
+                { seller: req.user.userId }
+            ]
+        });
+        res.json(transactions);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
-
-    user.password = newPassword;
-    await user.save();
-
-    res.json({ message: "비밀번호가 성공적으로 변경되었습니다" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "서버 오류가 발생했습니다" });
-  }
-};
-
-const getUploadedBooks = async (req, res) => {
-  try {
-    const books = await Book.find({ uploader: req.user.id })
-      .select('-__v')
-      .sort({ createdAt: -1 });
-    
-    res.json(books);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "서버 오류가 발생했습니다" });
-  }
-};
-
-const getPurchasedBooks = async (req, res) => {
-  try {
-    const purchases = await Purchase.find({ buyer: req.user.id })
-      .populate('book')
-      .select('-__v')
-      .sort({ purchaseDate: -1 });
-    
-    const books = purchases.map(purchase => purchase.book);
-    res.json(books);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "서버 오류가 발생했습니다" });
-  }
-};
-
-const getTransactions = async (req, res) => {
-  try {
-    const transactions = await Transaction.find({
-      $or: [
-        { seller: req.user.id },
-        { buyer: req.user.id }
-      ]
-    })
-      .populate('book')
-      .select('-__v')
-      .sort({ transactionDate: -1 });
-    
-    res.json(transactions);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "서버 오류가 발생했습니다" });
-  }
-};
-
-module.exports = {
-  register,
-  login,
-  getProfile,
-  updateProfile,
-  changePassword,
-  getUploadedBooks,
-  getPurchasedBooks,
-  getTransactions
 };
